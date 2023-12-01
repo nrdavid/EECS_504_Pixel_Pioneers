@@ -4,13 +4,14 @@ import segmentation_models_pytorch as smp
 from dataset import Dataset
 import segmentation_models_pytorch.utils
 from torch.utils.data import DataLoader
+import augmentations as aug
 
 ENCODER = "vgg19"
 ENCODER_WEIGHTS = "imagenet"
 CLASSES = ["Matrix", "Austenite", "Martensite/Austenite", "Precipitate", "Defect"]
 DEVICE = 'cuda'
 
-def main():
+def train(epochs=1):
     # create segmentation model with pretrained encoder
     model = smp.Unet(
         encoder_name=ENCODER, 
@@ -19,11 +20,9 @@ def main():
         in_channels=3,
     )
     preprocessing_fn = smp.encoders.get_preprocessing_fn(ENCODER, ENCODER_WEIGHTS)
-    # generate train, validation, and test directories
+    # generate train and validation lists
     with open("data/MetalDAM/train.txt", 'r') as f:
         train_splits = [line.strip() for line in f]
-    with open("data/MetalDAM/test.txt", 'r') as f:
-        test_splits = [line.strip() for line in f]
     with open("data/MetalDAM/val.txt", 'r') as f:
         val_splits = [line.strip() for line in f]
     x_dir = "data/MetalDAM/cropped_images"
@@ -33,21 +32,19 @@ def main():
         y_dir,
         split_list=train_splits,
         augmentation=None, 
-        preprocessing=None,
+        preprocessing=aug.get_preprocessing(preprocessing_fn),
         classes=CLASSES,
     )
-    print(train_dataset[0][0].shape)
     valid_dataset = Dataset(
         x_dir, 
         y_dir,
         split_list=val_splits,
         augmentation=None, 
-        preprocessing=None,
+        preprocessing=aug.get_preprocessing(preprocessing_fn),
         classes=CLASSES,
     )
-    print(valid_dataset[0][0].shape)
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=12)
-    valid_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=4)
+    train_loader = DataLoader(train_dataset, shuffle=True, num_workers=12)
+    valid_loader = DataLoader(valid_dataset, shuffle=False, num_workers=4)
     loss = smp.utils.losses.DiceLoss()
     metrics = [
         smp.utils.metrics.IoU(threshold=0.5)
@@ -84,7 +81,7 @@ def main():
         # do something (save model, change lr, etc.)
         if max_score < valid_logs['iou_score']:
             max_score = valid_logs['iou_score']
-            torch.save(model, './best_model.pth')
+            torch.save(model, 'unet/best_model.pth')
             print('Model saved!')
             
         if i == 25:
@@ -92,15 +89,64 @@ def main():
             print('Decrease decoder learning rate to 1e-5!')
 
 
+def test(viz_preds=False):
+    best_model = torch.load('unet/best_model.pth')
+    x_dir = "data/MetalDAM/cropped_images"
+    y_dir = "data/MetalDAM/cropped_labels"
+    preprocessing_fn = smp.encoders.get_preprocessing_fn(ENCODER, ENCODER_WEIGHTS)
+    with open("data/MetalDAM/test.txt", 'r') as f:
+        test_splits = [line.strip() for line in f]
+    test_dataset = Dataset(
+        x_dir, 
+        y_dir,
+        split_list=test_splits,
+        augmentation=None, 
+        preprocessing=aug.get_preprocessing(preprocessing_fn),
+        classes=CLASSES,
+    )
+    test_dataloader = DataLoader(test_dataset)
+    # evaluate model on test set
+    loss = smp.utils.losses.DiceLoss()
+    metrics = [
+        smp.utils.metrics.IoU(threshold=0.5)
+    ]
+    test_epoch = smp.utils.train.ValidEpoch(
+        model=best_model,
+        loss=loss,
+        metrics=metrics,
+        device=DEVICE,
+    )
+    logs = test_epoch.run(test_dataloader)
+
+    if viz_preds:
+        # test dataset without transformations for image visualization
+        test_dataset_vis = Dataset(
+            x_dir, y_dir, 
+            classes=CLASSES,
+        )
+        for i in range(5):
+            n = np.random.choice(len(test_dataset))
+            
+            image_vis = test_dataset_vis[n][0].astype('uint8')
+            image, gt_mask = test_dataset[n]
+            
+            gt_mask = gt_mask.squeeze()
+            
+            x_tensor = torch.from_numpy(image).to(DEVICE).unsqueeze(0)
+            pr_mask = best_model.predict(x_tensor)
+            pr_mask = (pr_mask.squeeze().cpu().numpy().round())
+                
+            Dataset.visualize(
+                image=image_vis, 
+                ground_truth_mask=gt_mask, 
+                predicted_mask=pr_mask
+            )
+
+def main():
+    #train()
+    test(True)
+
+
 if __name__ == "__main__":
     main()
-
-# model = smp.Unet(
-#     encoder_name="vgg19",        # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
-#     encoder_weights="imagenet",     # use `imagenet` pre-trained weights for encoder initialization
-#     in_channels=1,                  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
-#     classes=5,                      # model output channels (number of classes in your dataset)
-# )
-
-# preprocess_input = get_preprocessing_fn('vgg19', pretrained='imagenet')
 

@@ -23,9 +23,6 @@ class Dataset(BaseDataset):
             self.masks_fps = [os.path.join(mask_dir, image_id) if image_id in split_list else None for image_id in self.ids]
             self.masks_fps = [i for i in self.masks_fps if i != None]
 
-            print(len(self.images_fps))
-            print(len(self.masks_fps))
-
         # convert str names to class values on masks
         self.class_values = [self.CLASSES.index(cls) for cls in classes]
 
@@ -34,9 +31,8 @@ class Dataset(BaseDataset):
 
     def __getitem__(self, i):
         # read data
-        image = cv2.imread(self.images_fps[i]).astype(np.float32)
-        #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        mask = cv2.imread(self.masks_fps[i]).astype(np.float32)
+        image = cv2.imread(self.images_fps[i])
+        mask = cv2.imread(self.masks_fps[i], cv2.IMREAD_GRAYSCALE)
         
         # extract certain classes from mask (e.g. matrix)
         masks = [(mask == v) for v in self.class_values]
@@ -55,34 +51,35 @@ class Dataset(BaseDataset):
         return image, mask
     
     def __len__(self):
+        assert (len(self.images_fps) == len(self.masks_fps))
         return len(self.images_fps)
     
-    # helper function for data visualization
-    def visualize(**images):
-        """PLot images in one row."""
-        n = len(images)
-        plt.figure(figsize=(16, 5))
-        for i, (name, image) in enumerate(images.items()):
-            plt.subplot(1, n, i + 1)
-            plt.xticks([])
-            plt.yticks([])
-            plt.title(' '.join(name.split('_')).title())
-            plt.imshow(image, cmap='Greys')
-        plt.show()
+    # # helper function for data visualization
+    # def visualize(**images):
+    #     """PLot images in one row."""
+    #     n = len(images)
+    #     plt.figure(figsize=(16, 5))
+    #     for i, (name, image) in enumerate(images.items()):
+    #         plt.subplot(1, n, i + 1)
+    #         plt.xticks([])
+    #         plt.yticks([])
+    #         plt.title(' '.join(name.split('_')).title())
+    #         plt.imshow(image, cmap='Greys')
+    #     plt.show()
 
 
 
-def main():
-    x_train_dir = "data/MetalDAM/cropped_images"
-    y_train_dir = "data/MetalDAM/labels"
-    dataset = Dataset(x_train_dir, y_train_dir, classes=['Matrix'])
-    image, mask = dataset[7] # get some sample
-    Dataset.visualize(image=image, matrix_mask=mask.squeeze())
+# def main():
+#     x_train_dir = "data/MetalDAM/cropped_images"
+#     y_train_dir = "data/MetalDAM/labels"
+#     dataset = Dataset(x_train_dir, y_train_dir, classes=['Matrix'])
+#     image, mask = dataset[7] # get some sample
+#     Dataset.visualize(image=image, matrix_mask=mask.squeeze())
 
-    pass
+#     pass
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
 
 # model = smp.Unet(
 #     encoder_name="vgg19",        # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
