@@ -1,0 +1,4 @@
+dat/
+unet/__pycache__/
+unet/best_model.pth
+cars segmentation (camvid).ipynb
