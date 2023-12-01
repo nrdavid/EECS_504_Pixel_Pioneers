@@ -31,7 +31,7 @@ def train(epochs=1):
         x_dir, 
         y_dir,
         split_list=train_splits,
-        augmentation=None, 
+        augmentation=aug.get_training_augmentation(), 
         preprocessing=aug.get_preprocessing(preprocessing_fn),
         classes=CLASSES,
     )
@@ -39,7 +39,7 @@ def train(epochs=1):
         x_dir, 
         y_dir,
         split_list=val_splits,
-        augmentation=None, 
+        augmentation=aug.get_validation_augmentation(), 
         preprocessing=aug.get_preprocessing(preprocessing_fn),
         classes=CLASSES,
     )
@@ -100,7 +100,7 @@ def test(viz_preds=False):
         x_dir, 
         y_dir,
         split_list=test_splits,
-        augmentation=None, 
+        augmentation=aug.get_validation_augmentation(), 
         preprocessing=aug.get_preprocessing(preprocessing_fn),
         classes=CLASSES,
     )
@@ -136,15 +136,15 @@ def test(viz_preds=False):
             pr_mask = best_model.predict(x_tensor)
             pr_mask = (pr_mask.squeeze().cpu().numpy().round())
                 
-            Dataset.visualize(
-                image=image_vis, 
-                ground_truth_mask=gt_mask, 
-                predicted_mask=pr_mask
-            )
+            # Dataset.visualize(
+            #     image=image_vis, 
+            #     ground_truth_mask=gt_mask, 
+            #     predicted_mask=pr_mask
+            # )
 
 def main():
-    #train()
-    test(True)
+    train()
+    #test(True)
 
 
 if __name__ == "__main__":
