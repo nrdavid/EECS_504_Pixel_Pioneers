@@ -5,11 +5,14 @@ from dataset import Dataset
 import segmentation_models_pytorch.utils
 from torch.utils.data import DataLoader
 import augmentations as aug
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
 ENCODER = "vgg19"
 ENCODER_WEIGHTS = "imagenet"
 CLASSES = ["Matrix", "Austenite", "Martensite/Austenite", "Precipitate", "Defect"]
 DEVICE = 'cuda'
+ACTIVATION = 'softmax2d'
 
 def train(epochs=1):
     # create segmentation model with pretrained encoder
@@ -18,6 +21,7 @@ def train(epochs=1):
         encoder_weights=ENCODER_WEIGHTS, 
         classes=len(CLASSES), 
         in_channels=3,
+        activation=ACTIVATION,
     )
     preprocessing_fn = smp.encoders.get_preprocessing_fn(ENCODER, ENCODER_WEIGHTS)
     # generate train and validation lists
@@ -43,13 +47,16 @@ def train(epochs=1):
         preprocessing=aug.get_preprocessing(preprocessing_fn),
         classes=CLASSES,
     )
-    train_loader = DataLoader(train_dataset, shuffle=True, num_workers=12)
-    valid_loader = DataLoader(valid_dataset, shuffle=False, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=12)
+    valid_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=4)
+    # for batch_data, batch_targets in train_loader:
+    #     print(batch_targets[:, 0, :, :])
+    #     gaga
     loss = smp.utils.losses.DiceLoss()
-    metrics = [
-        smp.utils.metrics.IoU(threshold=0.5)
-    ]
-
+    # metrics = [
+    #     smp.metrics.iou_score(reduction="weighted", class_weights=[31.86, 58.26, 8.96, 0.24, 0.68])
+    # ]
+    metrics = [smp.utils.metrics.Accuracy()]
     optimizer = torch.optim.Adam([ 
         dict(params=model.parameters(), lr=0.0001),
     ])
@@ -72,15 +79,14 @@ def train(epochs=1):
     )
 
     max_score = 0
-    epochs = 1
     for i in range(0, epochs):
         print('\nEpoch: {}'.format(i))
         train_logs = train_epoch.run(train_loader)
         valid_logs = valid_epoch.run(valid_loader)
         
         # do something (save model, change lr, etc.)
-        if max_score < valid_logs['iou_score']:
-            max_score = valid_logs['iou_score']
+        if max_score < valid_logs['accuracy']:
+            max_score = valid_logs['accuracy']
             torch.save(model, 'unet/best_model.pth')
             print('Model saved!')
             
@@ -100,16 +106,17 @@ def test(viz_preds=False):
         x_dir, 
         y_dir,
         split_list=test_splits,
-        augmentation=aug.get_validation_augmentation(), 
+        augmentation=None, 
         preprocessing=aug.get_preprocessing(preprocessing_fn),
         classes=CLASSES,
     )
     test_dataloader = DataLoader(test_dataset)
     # evaluate model on test set
-    loss = smp.utils.losses.DiceLoss()
-    metrics = [
-        smp.utils.metrics.IoU(threshold=0.5)
-    ]
+    loss = loss = smp.utils.losses.DiceLoss()
+    # metrics = [
+    #     smp.metrics.iou_score(reduction="weighted", class_weights=[31.86, 58.26, 8.96, 0.24, 0.68])
+    # ]
+    metrics = [smp.utils.metrics.Accuracy()]
     test_epoch = smp.utils.train.ValidEpoch(
         model=best_model,
         loss=loss,
@@ -121,30 +128,72 @@ def test(viz_preds=False):
     if viz_preds:
         # test dataset without transformations for image visualization
         test_dataset_vis = Dataset(
-            x_dir, y_dir, 
-            classes=CLASSES,
+            x_dir, y_dir,
+            split_list=test_splits,
+            classes=CLASSES
         )
-        for i in range(5):
-            n = np.random.choice(len(test_dataset))
-            
-            image_vis = test_dataset_vis[n][0].astype('uint8')
-            image, gt_mask = test_dataset[n]
-            
-            gt_mask = gt_mask.squeeze()
-            
-            x_tensor = torch.from_numpy(image).to(DEVICE).unsqueeze(0)
-            pr_mask = best_model.predict(x_tensor)
-            pr_mask = (pr_mask.squeeze().cpu().numpy().round())
+        n = 1 #np.random.choice(len(test_dataset))
+        
+        image_vis = test_dataset_vis[n][0].astype('uint8')
+        image, gt_mask = test_dataset[n]
+        # print(image_vis.shape)
+        # print(image.shape)
+        
+        gt_mask = gt_mask.squeeze()
+        # print(gt_mask.shape)
+        x_tensor = torch.from_numpy(image).to(DEVICE).unsqueeze(0)
+        pr_mask = best_model.predict(x_tensor)
+        pr_mask = (pr_mask.squeeze().cpu().numpy().round())
+        
+        # change it to a regular implementation
+        plt.figure(figsize=(16, 5))
+        # assign different colors in different classes, use cropped labels
+        # images = (image_vis, gt_mask, pr_mask)
+        plt.subplot(1, 3, 1)
+        plt.xticks([])
+        plt.yticks([])
+        plt.title('Original Image')
+        plt.imshow(image_vis)
+        # cropped labels, assigning
+        label_colors = {
+            0: 'red',    # Label 0 colored red
+            1: 'green',  # Label 1 colored green
+            2: 'blue',    # Label 2 colored blue
+            3: 'yellow',   # Label 3 colored yellow
+            4: 'magenta'   # Label 4 colored magenta
+        }
+        colors = ['red', 'green', 'blue', 'yellow', 'purple']
+        colored_image = np.zeros((gt_mask.shape[1], gt_mask.shape[2], 3), dtype='uint8')
+        pr_mask_plt = np.zeros((pr_mask.shape[1], pr_mask.shape[2], 3), dtype='uint8')
+
+        for img_index in range(gt_mask.shape[0]):
+            # Create an RGB image where each pixel's color corresponds to its label
+            rgb = np.array(mcolors.to_rgb(colors[img_index])) * 255
+            colored_image[gt_mask[img_index, :, :] == 1] = rgb.astype('uint8')
+            pr_mask_plt[pr_mask[img_index, :, :] == 1] = rgb.astype('uint8')
+
+        # pr_mask_plt = np.zeros((pr_mask.shape[1], pr_mask.shape[2], 3), dtype='uint8')
+        # for idx in range(pr_mask.shape[0]):
+        #     rgb = np.array(mcolors.to_rgb(colors[idx])) * 255
+        #     pr_mask_plt[pr_mask[idx, :, :] == 1] = rgb.astype('uint8')
+        #
+        plt.subplot(1, 3, 2)
+        plt.xticks([])
+        plt.yticks([])
+        plt.title('Ground Truth')
+        plt.imshow(colored_image)
+        plt.subplot(1, 3, 3)
+        plt.xticks([])
+        plt.yticks([])
+        plt.title('Prediction')
+        plt.imshow(pr_mask_plt)
+        #
+        plt.savefig('test_vis50.png', dpi = 500)
                 
-            # Dataset.visualize(
-            #     image=image_vis, 
-            #     ground_truth_mask=gt_mask, 
-            #     predicted_mask=pr_mask
-            # )
 
 def main():
-    train()
-    #test(True)
+    train(10)
+    test(True)
 
 
 if __name__ == "__main__":

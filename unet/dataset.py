@@ -47,7 +47,7 @@ class Dataset(BaseDataset):
         if self.preprocessing:
             sample = self.preprocessing(image=image, mask=mask)
             image, mask = sample['image'], sample['mask']
-            
+        
         return image, mask
     
     def __len__(self):
