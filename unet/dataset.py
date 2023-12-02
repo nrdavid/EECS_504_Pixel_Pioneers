@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import albumentations as albu
 from torch.utils.data import Dataset as BaseDataset
 import os
+import torch
 
 # Inspiration from segmentation models camvid (https://github.com/qubvel/segmentation_models.pytorch)
 
@@ -32,7 +33,7 @@ class Dataset(BaseDataset):
     def __getitem__(self, i):
         # read data
         image = cv2.imread(self.images_fps[i])
-        mask = cv2.imread(self.masks_fps[i], cv2.IMREAD_GRAYSCALE)
+        mask = cv2.imread(self.masks_fps[i], 0)
         
         # extract certain classes from mask (e.g. matrix)
         masks = [(mask == v) for v in self.class_values]
@@ -47,6 +48,7 @@ class Dataset(BaseDataset):
         if self.preprocessing:
             sample = self.preprocessing(image=image, mask=mask)
             image, mask = sample['image'], sample['mask']
+            #mask = torch.as_tensor(mask, dtype=torch.long)
         
         return image, mask
     
