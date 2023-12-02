@@ -132,7 +132,7 @@ def test(viz_preds=False):
             split_list=test_splits,
             classes=CLASSES
         )
-        n = 1 #np.random.choice(len(test_dataset))
+        n = np.random.choice(len(test_dataset))
         
         image_vis = test_dataset_vis[n][0].astype('uint8')
         image, gt_mask = test_dataset[n]
@@ -143,7 +143,18 @@ def test(viz_preds=False):
         # print(gt_mask.shape)
         x_tensor = torch.from_numpy(image).to(DEVICE).unsqueeze(0)
         pr_mask = best_model.predict(x_tensor)
-        pr_mask = (pr_mask.squeeze().cpu().numpy().round())
+        unique = np.unique(pr_mask.squeeze().cpu().numpy().round().astype('uint8'))
+        print(unique)
+        #pr_mask = (pr_mask.squeeze().cpu().numpy().round().astype('uint8'))
+        pr_mask = pr_mask.squeeze().cpu().numpy()
+        max_l_indices = np.argmax(pr_mask, axis=0)
+        mask = np.eye(pr_mask.shape[0])[max_l_indices]
+        result = pr_mask*mask.transpose(2, 0, 1)
+        pr_mask = np.where(result != 0, 1, 0)
+        #pr_mask = pr_mask.astype('uint8')
+
+        print("Ground Truth Mask Shape: ", gt_mask.shape)
+        print("Predicted Mask Shape: ", pr_mask.shape)
         
         # change it to a regular implementation
         plt.figure(figsize=(16, 5))
@@ -165,18 +176,23 @@ def test(viz_preds=False):
         colors = ['red', 'green', 'blue', 'yellow', 'purple']
         colored_image = np.zeros((gt_mask.shape[1], gt_mask.shape[2], 3), dtype='uint8')
         pr_mask_plt = np.zeros((pr_mask.shape[1], pr_mask.shape[2], 3), dtype='uint8')
+        total_classified_gt, total_classified_pr = np.zeros(5, dtype=int), np.zeros(5, dtype=int)
+        pr_mask_plt[:, :, 0] = 255
+        pr_mask_plt[:, :, 1] = 255
+        pr_mask_plt[:, :, 2] = 255
 
         for img_index in range(gt_mask.shape[0]):
             # Create an RGB image where each pixel's color corresponds to its label
             rgb = np.array(mcolors.to_rgb(colors[img_index])) * 255
+            total_classified_gt[img_index]= (gt_mask[img_index, :, :] == 1).sum()
+            #print("gt_mask: ", (gt_mask[img_index, :, :] == 1).sum())
             colored_image[gt_mask[img_index, :, :] == 1] = rgb.astype('uint8')
+            #print("pr_mask_plt: ", (pr_mask[img_index, :, :] == 1).sum())
+            total_classified_pr[img_index]= (pr_mask[img_index, :, :] == 1).sum()
             pr_mask_plt[pr_mask[img_index, :, :] == 1] = rgb.astype('uint8')
-
-        # pr_mask_plt = np.zeros((pr_mask.shape[1], pr_mask.shape[2], 3), dtype='uint8')
-        # for idx in range(pr_mask.shape[0]):
-        #     rgb = np.array(mcolors.to_rgb(colors[idx])) * 255
-        #     pr_mask_plt[pr_mask[idx, :, :] == 1] = rgb.astype('uint8')
-        #
+        
+        print("gt_mask: ", total_classified_gt)
+        print("pr_mask: ", total_classified_pr)
         plt.subplot(1, 3, 2)
         plt.xticks([])
         plt.yticks([])
@@ -192,7 +208,7 @@ def test(viz_preds=False):
                 
 
 def main():
-    train(10)
+    #train(10)
     test(True)
 
 
