@@ -1,4 +1,8 @@
 import albumentations as albu
+# Inspiration from segmentation models camvid (https://github.com/qubvel/segmentation_models.pytorch)
+
+# Performs various augementations to improve diversity of dataset
+# To be applied to micrograph and mask
 
 def get_training_augmentation():
     train_transform = [
@@ -43,7 +47,7 @@ def get_training_augmentation():
 
 
 def get_validation_augmentation():
-    """Add paddings to make image shape divisible by 32"""
+    # paddings to ensure divisible by 32
     test_transform = [
         albu.PadIfNeeded(1024, 672)
     ]
@@ -51,19 +55,12 @@ def get_validation_augmentation():
 
 
 def to_tensor(x, **kwargs):
+    # convert to tensor
     return x.transpose(2, 0, 1).astype('float32')
 
 
 def get_preprocessing(preprocessing_fn):
-    """Construct preprocessing transform
-    
-    Args:
-        preprocessing_fn (callbale): data normalization function 
-            (can be specific for each pretrained neural network)
-    Return:
-        transform: albumentations.Compose
-    
-    """
+    # Preprocessing to construct augmentations
     
     _transform = [
         albu.Lambda(image=preprocessing_fn),

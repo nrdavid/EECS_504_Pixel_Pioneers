@@ -11,8 +11,8 @@ import os
 import pandas as pd
 
 
-#ITER = 0
-ARCH = "Unet"
+# Global parameters
+ARCH = "UnetPlusPlus"
 ENCODER = "vgg19"
 ENCODER_WEIGHTS = "imagenet"
 CLASSES = ["Matrix", "Austenite", "Martensite/Austenite", "Precipitate", "Defect"]
@@ -26,7 +26,8 @@ if not os.path.isdir(OUTPUT_DIR):
     os.mkdir(OUTPUT_DIR)
 
 def train(iter, epochs=1):
-    # create segmentation model with pretrained encoder
+    # train the model using the specifications above
+    # iter is an int for the iteration through random samples
     model = smp.create_model(
         arch=ARCH,
         encoder_name=ENCODER, 
@@ -43,6 +44,7 @@ def train(iter, epochs=1):
         val_splits = [line.strip() for line in f]
     x_dir = "data/MetalDAM/cropped_images"
     y_dir = "data/MetalDAM/cropped_labels"
+    # Generate train and validation data
     train_dataset = Dataset(
         x_dir, 
         y_dir,
@@ -59,20 +61,18 @@ def train(iter, epochs=1):
         preprocessing=aug.get_preprocessing(preprocessing_fn),
         classes=CLASSES,
     )
+    # Put into dataloader for pass to model
     train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=12)
     valid_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=4)
-    # for batch_data, batch_targets in train_loader:
-    #     print(batch_targets[:, 0, :, :])
-    #     gaga
+    # Dice loss and training accuracy
     loss = smp.utils.losses.DiceLoss()
-    # metrics = [
-    #     smp.metrics.iou_score(reduction="weighted", class_weights=[31.86, 58.26, 8.96, 0.24, 0.68])
-    # ]
     metrics = [smp.utils.metrics.Accuracy()]
+    # Adam optimizer
     optimizer = torch.optim.Adam([ 
         dict(params=model.parameters(), lr=0.0001),
     ])
 
+    # setup for training and validation epochs
     train_epoch = smp.utils.train.TrainEpoch(
         model, 
         loss=loss, 
@@ -89,27 +89,26 @@ def train(iter, epochs=1):
         device=DEVICE,
         verbose=True,
     )
-
+    # Save max score
     max_score = 0
     for i in range(0, epochs):
         print('\nEpoch: {}'.format(i))
         train_logs = train_epoch.run(train_loader)
         valid_logs = valid_epoch.run(valid_loader)
-        
         # do something (save model, change lr, etc.)
         if max_score < valid_logs['accuracy']:
             max_score = valid_logs['accuracy']
             torch.save(model, 'unet/best_model.pth')
             print('Model saved!')
-            
-        if i == 25:
-            optimizer.param_groups[0]['lr'] = 1e-5
-            print('Decrease decoder learning rate to 1e-5!')
+    # return the max score and model for info and testing later
     return max_score, model
 
 
 def test(iter, best_model, viz_preds=False):
-    #best_model = torch.load('unet/best_model_unetplusplus.pth')
+    # runs model on test set
+    # iter = int for random sample test set
+    # best_model is the best model saved from pefore
+    # viz_preds decides whether or not to visualize our predictions
     x_dir = "data/MetalDAM/cropped_images"
     y_dir = "data/MetalDAM/cropped_labels"
     preprocessing_fn = smp.encoders.get_preprocessing_fn(ENCODER, ENCODER_WEIGHTS)
@@ -126,12 +125,10 @@ def test(iter, best_model, viz_preds=False):
     test_dataloader = DataLoader(test_dataset)
     # evaluate model on test set
     loss = loss = smp.utils.losses.DiceLoss()
-    # metrics = [
-    #     smp.metrics.iou_score(reduction="weighted", class_weights=[31.86, 58.26, 8.96, 0.24, 0.68])
-    # ]
+    # class wise and total IoU
     metrics = [smp.utils.metrics.Accuracy(),
                smp.utils.metrics.IoU(threshold=0.5),
-               smp.utils.metrics.IoU(threshold=0.5, ignore_channels=[1,2,3,4]), #iou class 0
+               smp.utils.metrics.IoU(threshold=0.5, ignore_channels=[1,2,3,4]),
                smp.utils.metrics.IoU(threshold=0.5, ignore_channels=[0,2,3,4]),
                smp.utils.metrics.IoU(threshold=0.5, ignore_channels=[0,1,3,4]),
                smp.utils.metrics.IoU(threshold=0.5, ignore_channels=[0,1,2,4]),
@@ -153,34 +150,19 @@ def test(iter, best_model, viz_preds=False):
             classes=CLASSES
         )
         for n in range(len(test_dataset)):
-            # n = np.random.choice(len(test_dataset))
             
             image_vis = test_dataset_vis[n][0].astype('uint8')
             image, gt_mask = test_dataset[n]
-            # print(image_vis.shape)
-            # print(image.shape)
             
             gt_mask = gt_mask.squeeze()
-            # print(gt_mask.shape)
             x_tensor = torch.from_numpy(image).to(DEVICE).unsqueeze(0)
             pr_mask = best_model.predict(x_tensor)
-            unique = np.unique(pr_mask.squeeze().cpu().numpy().round().astype('uint8'))
-            #print(unique)
-            #pr_mask = (pr_mask.squeeze().cpu().numpy().round().astype('uint8'))
             pr_mask = pr_mask.squeeze().cpu().numpy()
-            max_l_indices = np.argmax(pr_mask, axis=0)
+            max_l_indices = np.argmax(pr_mask, axis=0) # get most probable
             mask = np.eye(pr_mask.shape[0])[max_l_indices]
             result = pr_mask*mask.transpose(2, 0, 1)
-            pr_mask = np.where(result != 0, 1, 0)
-            #pr_mask = pr_mask.astype('uint8')
-
-            #print("Ground Truth Mask Shape: ", gt_mask.shape)
-            #print("Predicted Mask Shape: ", pr_mask.shape)
-            
-            # change it to a regular implementation
+            pr_mask = np.where(result != 0, 1, 0) # change nonzeros to 1s for plotting from argmax
             plt.figure(figsize=(16, 5))
-            # assign different colors in different classes, use cropped labels
-            # images = (image_vis, gt_mask, pr_mask)
             plt.subplot(1, 3, 1)
             plt.xticks([])
             plt.yticks([])
@@ -197,23 +179,16 @@ def test(iter, best_model, viz_preds=False):
             colors = ['red', 'green', 'blue', 'yellow', 'purple']
             colored_image = np.zeros((gt_mask.shape[1], gt_mask.shape[2], 3), dtype='uint8')
             pr_mask_plt = np.zeros((pr_mask.shape[1], pr_mask.shape[2], 3), dtype='uint8')
+            # check to make sure we're classifying everything
             total_classified_gt, total_classified_pr = np.zeros(5, dtype=int), np.zeros(5, dtype=int)
-            pr_mask_plt[:, :, 0] = 255
-            pr_mask_plt[:, :, 1] = 255
-            pr_mask_plt[:, :, 2] = 255
 
             for img_index in range(gt_mask.shape[0]):
                 # Create an RGB image where each pixel's color corresponds to its label
                 rgb = np.array(mcolors.to_rgb(colors[img_index])) * 255
                 total_classified_gt[img_index]= (gt_mask[img_index, :, :] == 1).sum()
-                #print("gt_mask: ", (gt_mask[img_index, :, :] == 1).sum())
                 colored_image[gt_mask[img_index, :, :] == 1] = rgb.astype('uint8')
-                #print("pr_mask_plt: ", (pr_mask[img_index, :, :] == 1).sum())
                 total_classified_pr[img_index]= (pr_mask[img_index, :, :] == 1).sum()
                 pr_mask_plt[pr_mask[img_index, :, :] == 1] = rgb.astype('uint8')
-            
-            #print("gt_mask: ", total_classified_gt)
-            #print("pr_mask: ", total_classified_pr)
             plt.subplot(1, 3, 2)
             plt.xticks([])
             plt.yticks([])
@@ -224,12 +199,13 @@ def test(iter, best_model, viz_preds=False):
             plt.yticks([])
             plt.title('Prediction')
             plt.imshow(pr_mask_plt)
-            #
             plt.savefig(f'{OUTPUT_DIR}/test_images/test{iter}_{n}.png', dpi = 500)
             plt.close()
+    # return logs for model info
     return logs
 
 def main():
+    # keep track of accuracy and log_list for report
     best_acc = 0
     log_list = []
     epochs = 20
@@ -244,8 +220,6 @@ def main():
         log_list.append(logs)
     log_df = pd.DataFrame(log_list)
     log_df.to_csv(f'{OUTPUT_DIR}/test_logs.csv')
-
-
 
 if __name__ == "__main__":
     main()

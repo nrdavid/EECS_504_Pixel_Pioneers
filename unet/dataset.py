@@ -48,47 +48,9 @@ class Dataset(BaseDataset):
         if self.preprocessing:
             sample = self.preprocessing(image=image, mask=mask)
             image, mask = sample['image'], sample['mask']
-            #mask = torch.as_tensor(mask, dtype=torch.long)
         
         return image, mask
     
     def __len__(self):
         assert (len(self.images_fps) == len(self.masks_fps))
         return len(self.images_fps)
-    
-    # # helper function for data visualization
-    # def visualize(**images):
-    #     """PLot images in one row."""
-    #     n = len(images)
-    #     plt.figure(figsize=(16, 5))
-    #     for i, (name, image) in enumerate(images.items()):
-    #         plt.subplot(1, n, i + 1)
-    #         plt.xticks([])
-    #         plt.yticks([])
-    #         plt.title(' '.join(name.split('_')).title())
-    #         plt.imshow(image, cmap='Greys')
-    #     plt.show()
-
-
-
-# def main():
-#     x_train_dir = "data/MetalDAM/cropped_images"
-#     y_train_dir = "data/MetalDAM/labels"
-#     dataset = Dataset(x_train_dir, y_train_dir, classes=['Matrix'])
-#     image, mask = dataset[7] # get some sample
-#     Dataset.visualize(image=image, matrix_mask=mask.squeeze())
-
-#     pass
-
-# if __name__ == "__main__":
-#     main()
-
-# model = smp.Unet(
-#     encoder_name="vgg19",        # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
-#     encoder_weights="imagenet",     # use `imagenet` pre-trained weights for encoder initialization
-#     in_channels=1,                  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
-#     classes=5,                      # model output channels (number of classes in your dataset)
-# )
-
-# preprocess_input = get_preprocessing_fn('vgg19', pretrained='imagenet')
-
