@@ -91,17 +91,22 @@ def train(iter, epochs=1):
     )
     # Save max score
     max_score = 0
+    train_logs_ret = {'dice_loss': [], 'accuracy': []}
+    valid_logs_ret = {'dice_loss': [], 'accuracy': []}
     for i in range(0, epochs):
         print('\nEpoch: {}'.format(i))
         train_logs = train_epoch.run(train_loader)
         valid_logs = valid_epoch.run(valid_loader)
+        for key in train_logs.keys():
+            train_logs_ret[key].append(train_logs[key])
+            valid_logs_ret[key].append(valid_logs[key])
         # do something (save model, change lr, etc.)
         if max_score < valid_logs['accuracy']:
             max_score = valid_logs['accuracy']
             torch.save(model, 'unet/best_model.pth')
             print('Model saved!')
     # return the max score and model for info and testing later
-    return max_score, model
+    return max_score, model, train_logs_ret, valid_logs_ret
 
 
 def test(iter, best_model, viz_preds=False):
@@ -124,7 +129,7 @@ def test(iter, best_model, viz_preds=False):
     )
     test_dataloader = DataLoader(test_dataset)
     # evaluate model on test set
-    loss = loss = smp.utils.losses.DiceLoss()
+    loss = smp.utils.losses.DiceLoss()
     # class wise and total IoU
     metrics = [smp.utils.metrics.Accuracy(),
                smp.utils.metrics.IoU(threshold=0.5),
@@ -210,7 +215,10 @@ def main():
     log_list = []
     epochs = 20
     for i in range(5):
-        max_score, model = train(i, epochs)
+        max_score, model, train_logs, valid_logs = train(i, epochs)
+        if i == 0:
+            pd.DataFrame(train_logs).to_csv(f'{OUTPUT_DIR}/train_logs.csv')
+            pd.DataFrame(valid_logs).to_csv(f'{OUTPUT_DIR}/valid_logs.csv')
         if max_score > best_acc:
             best_acc = max_score
             torch.save(model, f'{OUTPUT_DIR}/best_train_model.pth')
@@ -224,3 +232,5 @@ def main():
 if __name__ == "__main__":
     main()
 
+
+# %%
